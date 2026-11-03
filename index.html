@@ -34,7 +34,8 @@ button.alt,.tabs button{background:var(--card);color:var(--tx);border:1px solid 
 .card small,.mu{color:var(--mu)}.card b{font-size:1.25rem}
 .neg{color:#ef4444}.pos{color:#22c55e}
 .bar{height:12px;background:var(--card);border:1px solid var(--bd);border-radius:99px;overflow:hidden;margin-top:12px}
-.bar div{height:100%;background:var(--ac)}
+.bar{display:flex}.bar div{height:100%;background:var(--ac)}.bar .ex{background:#22c55e}
+.card.ok{border:2px solid #22c55e}
 .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
 .dow{text-align:center;color:var(--mu);font-size:.8rem}
 .day{background:var(--card);color:var(--tx);border:1px solid var(--bd);min-height:58px;display:flex;flex-direction:column;align-items:center;padding:4px}
@@ -98,7 +99,7 @@ function calc(y,m){
   // Objetivo del mes: si lo escribiste tú, manda ese; si no, se calcula (días laborables × objetivo diario)
   const manual=S.monthTargets[y+'-'+pad(m+1)],isManual=manual!==undefined;
   const target=isManual?manual:days*S.settings.target,n=Object.keys(perDay).length;
-  return{perDay,perWeek,worked,disc,net,target,isManual,diff:net-target,avg:n?Math.round(worked/n):0,progress:target?Math.min(100,Math.round(net/target*100)):0}
+  return{perDay,perWeek,worked,disc,net,target,isManual,diff:net-target,extra:target>0?Math.max(0,net-target):0,falta:target>0?Math.max(0,target-net):0,pct:target?Math.round(net/target*100):0,avg:n?Math.round(worked/n):0,progress:target?Math.min(100,Math.round(net/target*100)):0}
 }
 function dur(id,v,mh){return '<span class="dur"><input id="'+id+'h" type="number" min="0" max="'+(mh||24)+'" value="'+Math.floor(v/60)+'"> h <input id="'+id+'m" type="number" min="0" max="59" value="'+v%60+'"> min</span>'}
 let merr='';
@@ -116,8 +117,10 @@ function render(){
   h+='<div class="tabs">'+[['panel','Panel'],['informes','Informes'],['ajustes','Ajustes']].map(([k,l])=>'<button class="'+(tab===k?'on':'')+'" onclick="tab=\''+k+'\';render()">'+l+'</button>').join('')+'</div>';
   h+='<nav><button class="alt" onclick="go(-1)">◄</button><h2>'+MES[M]+' '+Y+'</h2><button class="alt" onclick="go(1)">►</button></nav>';
   if(tab==='panel'){
-    h+=nag();h+='<div class="cards"><div class="card"><small>Trabajadas (netas)</small><b>'+fmt(r.net)+'</b></div><div class="card"><small>Objetivo del mes</small><b>'+fmt(r.target)+'</b></div><div class="card"><small>Diferencia</small><b class="'+(r.diff<0?'neg':'pos')+'">'+fmt(r.diff)+'</b></div><div class="card"><small>Promedio diario</small><b>'+fmt(r.avg)+'</b></div></div>';
-    h+='<div class="bar"><div style="width:'+r.progress+'%"></div></div><p class="mu">Progreso: '+r.progress+'% · Brutas: '+fmt(r.worked)+' · Descuentos: '+fmt(r.disc)+'</p>';
+    h+=nag();h+='<div class="cards"><div class="card"><small>Trabajadas (netas)</small><b>'+fmt(r.net)+'</b></div><div class="card"><small>Objetivo del mes</small><b>'+fmt(r.target)+'</b></div>'+(r.target<=0?'<div class="card"><small>Horas extras</small><b class="mu" style="font-size:.9rem">Escribe tu objetivo</b></div>':r.net>=r.target?'<div class="card ok"><small>Horas extras</small><b class="pos">+'+fmt(r.extra)+'</b></div>':'<div class="card"><small>Te faltan</small><b class="neg">'+fmt(r.falta)+'</b></div>')+'<div class="card"><small>Promedio diario</small><b>'+fmt(r.avg)+'</b></div></div>';
+    if(r.target>0&&r.net>=r.target)h+='<div class="card ok" style="margin-top:10px"><span>✅ <b>¡Objetivo cumplido!</b> Horas extras este mes: <b class="pos">+'+fmt(r.extra)+'</b></span></div>';
+    const bA=r.net>r.target&&r.target>0?r.target/r.net*100:r.progress,bB=r.net>r.target&&r.target>0?(r.net-r.target)/r.net*100:0;
+    h+='<div class="bar"><div style="width:'+bA+'%"></div><div class="ex" style="width:'+bB+'%"></div></div><p class="mu">Progreso: '+r.pct+'%'+(r.extra>0?' (verde = horas extras)':'')+' · Brutas: '+fmt(r.worked)+' · Descuentos: '+fmt(r.disc)+'</p>';
     h+='<div class="card" style="gap:8px;margin-top:8px"><b style="font-size:1rem">Objetivo de '+MES[M]+'</b><span class="mu">'+(r.isManual?'Lo escribiste tú.':'Ahora es un cálculo automático (días laborables × objetivo diario). Escríbelo tú si tus turnos varían.')+'</span>'+(merr?'<div class="err">'+esc(merr)+'</div>':'')+dur('mt',r.target,744)+'<div class="row"><button onclick="saveMonth()">Guardar objetivo</button>'+(r.isManual?'<button class="alt" onclick="clearMonth()">Cálculo automático</button>':'')+'</div></div>';
     const nd=new Date(Y,M+1,0).getDate(),mx=Math.max(S.settings.target,...Object.values(r.perDay),1);
     h+='<h3>Horas por día</h3><div class="chart">'+Array.from({length:nd},(_,i)=>{const v=r.perDay[iso(Y,M,i+1)]||0;return '<i title="Día '+(i+1)+': '+fmt(v)+'" style="height:'+(v/mx*100)+'%"></i>'}).join('')+'</div>';
@@ -132,10 +135,10 @@ function render(){
   }
   if(tab==='informes'){
     h+='<div class="row noprint"><button onclick="csv()">Exportar Excel (CSV)</button><button onclick="pdf()">Exportar PDF</button></div>';
-    h+='<h3>Resumen de '+MES[M]+' '+Y+'</h3><ul><li>Trabajadas: '+fmt(r.worked)+'</li><li>Descuentos: '+fmt(r.disc)+'</li><li>Netas: '+fmt(r.net)+' de '+fmt(r.target)+' (dif. '+fmt(r.diff)+')</li><li>Promedio diario: '+fmt(r.avg)+'</li></ul>';
+    h+='<h3>Resumen de '+MES[M]+' '+Y+'</h3><ul><li>Trabajadas: '+fmt(r.worked)+'</li><li>Descuentos: '+fmt(r.disc)+'</li><li>Netas: '+fmt(r.net)+' de '+fmt(r.target)+'</li>'+(r.target>0?(r.net>=r.target?'<li class="pos"><b>Horas extras: +'+fmt(r.extra)+'</b></li>':'<li class="neg"><b>Te faltan: '+fmt(r.falta)+'</b></li>'):'')+'<li>Promedio diario: '+fmt(r.avg)+'</li></ul>';
     const hist={};S.entries.forEach(e=>{const k=e.date.slice(0,7);hist[k]=hist[k]||{w:0,d:0};hist[k].w+=e.min});
     S.adj.forEach(a=>{const k=a.date.slice(0,7);hist[k]=hist[k]||{w:0,d:0};hist[k].d+=a.min});
-    h+='<h3>Historial</h3><ul>'+(Object.keys(hist).sort().reverse().map(k=>'<li>'+k+' · netas '+fmt(hist[k].w-hist[k].d)+' (brutas '+fmt(hist[k].w)+', desc. '+fmt(hist[k].d)+')</li>').join('')||'<li class="mu">Aún no hay meses</li>')+'</ul>';
+    h+='<h3>Historial</h3><ul>'+(Object.keys(hist).sort().reverse().map(k=>(()=>{const[yy,mm]=k.split('-').map(Number),rr=calc(yy,mm-1);return '<li>'+k+' · netas '+fmt(hist[k].w-hist[k].d)+' (brutas '+fmt(hist[k].w)+', desc. '+fmt(hist[k].d)+')'+(rr.isManual&&rr.extra>0?' · <b class="pos">extras +'+fmt(rr.extra)+'</b>':'')+'</li>'})()).join('')||'<li class="mu">Aún no hay meses</li>')+'</ul>';
   }
   if(tab==='ajustes'){
     const s=S.settings;
@@ -270,7 +273,7 @@ function pdf(){
   trow('DESCUENTOS Y AJUSTES',(r.disc?'-':'')+fh(r.disc));
   trow('TOTAL HORAS TRABAJADAS (neto)',fh(r.net),1);
   trow('OBJETIVO DEL MES'+(r.isManual?' (manual)':' (calculado)'),fh(r.target));
-  trow(r.diff>=0?'EXTRAS':'FALTAN',fh(Math.abs(r.diff)),1);
+  trow(r.target>0&&r.diff<0?'FALTAN PARA EL OBJETIVO':'HORAS EXTRAS (por encima del objetivo)',fh(r.target>0&&r.diff<0?r.falta:r.extra),1);
   trow('PROMEDIO DIARIO (dias con registro)',fh(r.avg));
 
   pages.push(ops.join('\n'));
@@ -353,6 +356,7 @@ function csv(){
   S.entries.sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>rows.push([e.date,e.start,e.end,e.brk,e.min]));
   rows.push([],['Descuentos'],['Fecha','Tipo','Minutos','Motivo']);
   S.adj.forEach(a=>rows.push([a.date,TIPOS[a.type],a.min,'"'+a.reason.replace(/"/g,'""')+'"']));
+  { const rr=calc(Y,M);rows.push([],['Resumen '+MES[M]+' '+Y],['Neto (min)',rr.net],['Objetivo (min)',rr.target],['Horas extras (min)',rr.extra]) }
   const blob=new Blob(['\ufeff'+rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'});
   const file=new File([blob],'horas.csv',{type:'text/csv'});
   // En iPhone/iPad se abre la hoja de compartir (Guardar en Archivos, Numbers, Mail...)
