@@ -68,7 +68,7 @@ try{
   document.head.appendChild(l);
 }catch(e){}
 const KEY='control-horas-v1';
-const D={entries:[],dayTypes:{},adj:[],monthTargets:{},settings:{limit:1440,target:480,workdays:[1,2,3,4,5],theme:''}};
+const D={entries:[],dayTypes:{},adj:[],monthTargets:{},notes:{},settings:{limit:1440,target:480,workdays:[1,2,3,4,5],theme:''}};
 let S=JSON.parse(JSON.stringify(D));
 try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
@@ -157,13 +157,14 @@ function modal(prefill){
   const E=S.entries.filter(e=>e.date===sel),t=S.dayTypes[sel]||'laborable',f=prefill||{start:'08:00',end:'16:00',brk:30},A=S.adj.filter(a=>a.date===sel);
   document.getElementById('modal').innerHTML='<div class="bg" onclick="if(event.target===this)closeDay()"><div class="modal"><h3 style="margin:0">'+sel+'</h3>'+(err?'<div class="err">'+esc(err)+'</div>':'')
   +'<label>Tipo de día<select onchange="setType(this.value)">'+[['laborable','Laborable'],['festivo','Festivo'],['vacaciones','Vacaciones']].map(([k,l])=>'<option value="'+k+'"'+(t===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'
-  +'<b>Turnos del día</b><ul>'+(E.map(e=>'<li>'+e.start+'–'+e.end+' (desc. '+e.brk+' min) = <b>'+fmt(e.min)+'</b> <button class="mini" onclick="editE('+e.id+')">✏️</button><button class="mini" onclick="delE('+e.id+')">🗑</button></li>').join('')||'<li class="mu">Sin turnos</li>')+'</ul>'
+  +'<label>Anotación del día (sale en el reporte)<input id="dn" value="'+esc((S.notes&&S.notes[sel])||'')+'" onchange="setNote(this.value)" placeholder="Ej: Cx refractiva"></label>'+'<b>Turnos del día</b><ul>'+(E.map(e=>'<li>'+e.start+'–'+e.end+' (desc. '+e.brk+' min) = <b>'+fmt(e.min)+'</b> <button class="mini" onclick="editE('+e.id+')">✏️</button><button class="mini" onclick="delE('+e.id+')">🗑</button></li>').join('')||'<li class="mu">Sin turnos</li>')+'</ul>'
   +'<b>'+(editing?'Editando turno':'Añadir turno')+'</b><label>Llegada<input type="time" id="s" value="'+f.start+'"></label><label>Salida<input type="time" id="e" value="'+f.end+'"></label><label>Descanso (min)<input type="number" id="b" min="0" value="'+f.brk+'"></label>'
   +'<button onclick="saveE()">'+(editing?'Guardar cambios':'Añadir turno')+'</button>'
   +'<b>Descuento (opcional)</b><select id="at">'+Object.entries(TIPOS).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select>'+dur('ad',0)+'<input id="ar" placeholder="Motivo (obligatorio)"><button onclick="addAdj()">Añadir descuento</button>'
   +(A.length?'<ul>'+A.map(a=>'<li>'+TIPOS[a.type]+' -'+fmt(a.min)+' · '+esc(a.reason)+' <button class="mini" onclick="delAdj('+a.id+',1)">🗑</button></li>').join('')+'</ul>':'')
   +'<button class="alt" onclick="closeDay()">Cerrar</button></div></div>'
 }
+function setNote(v){v=v.trim().slice(0,80);S.notes=S.notes||{};if(v)S.notes[sel]=v;else delete S.notes[sel];save()}
 function setType(v){if(v==='laborable')delete S.dayTypes[sel];else S.dayTypes[sel]=v;save()}
 function saveE(){
   const s=document.getElementById('s').value,e=document.getElementById('e').value,b=Number(document.getElementById('b').value);
@@ -189,68 +190,87 @@ function addAdj(){
 }
 function delAdj(id,inModal){S.adj=S.adj.filter(a=>a.id!==id);save();inModal?modal():render()}
 // PDF real, hecho a mano (sin librerías): funciona en iPhone, iPad y Mac, incluso sin internet
+// Formato tipo hoja de Excel: todos los días del mes, horas brutas, almuerzo, anotaciones y totales
 function pdf(){
-  const ym=Y+'-'+pad(M+1),r=calc(Y,M),name=(S.settings.name||'').trim();
-  const ents=S.entries.filter(e=>e.date.startsWith(ym+'-')).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
-  const adjs=S.adj.filter(a=>a.date.startsWith(ym+'-')).sort((a,b)=>a.date.localeCompare(b.date));
-  const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
+  const ym=Y+'-'+pad(M+1),r=calc(Y,M),name=(S.settings.name||'').trim(),nd=new Date(Y,M+1,0).getDate();
+  const DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const fh=m=>(m<0?'-':'')+Math.floor(Math.abs(m)/60)+':'+pad(Math.abs(m)%60);
+  const trunc=(s,n)=>s.length>n?s.slice(0,n-3)+'...':s;
   const pages=[];let ops=[],y=800;
   const q=s=>String(s).replace(/[^\x20-\xff]/g,c=>({'–':'-','—':'-','·':'|'}[c]||'?')).replace(/[\\()]/g,'\\$&');
   const fill=(a,b,c)=>ops.push(a+' '+b+' '+c+' rg'),stroke=(a,b,c)=>ops.push(a+' '+b+' '+c+' RG');
-  const T=(x,yy,s,b,sz)=>ops.push('BT /'+(b?'F2':'F1')+' '+(sz||10)+' Tf '+x+' '+yy+' Td ('+q(s)+') Tj ET');
+  const T=(x,yy,s,b,sz)=>ops.push('BT /'+(b?'F2':'F1')+' '+(sz||9)+' Tf '+x+' '+yy+' Td ('+q(s)+') Tj ET');
   const box=(x,yy,w,h,m)=>ops.push(x+' '+yy+' '+w+' '+h+' re '+m);
   const newPage=()=>{pages.push(ops.join('\n'));ops=[];y=800};
-  const need=h=>{if(y-h<50)newPage()};
+  const H=16,X=[40,180,235,290,365,555];
+  const grid=(top,h,skip)=>{stroke(.78,.78,.84);ops.push('0.5 w');box(40,top-h,515,h,'S');
+    X.slice(1,-1).forEach(x=>{if(x!==skip)ops.push(x+' '+(top-h)+' m '+x+' '+top+' l S')})};
 
-  // Encabezado + nombre
-  T(40,y-16,'Informe de horas - '+MES[M]+' '+Y,1,16);y-=36;
+  // Título y nombre
+  T(40,y-16,'Informe de horas - '+MES[M]+' '+Y,1,16);y-=34;
   T(40,y-12,'Nombre:',1,11);
   stroke(.4,.4,.45);ops.push('0.8 w 95 '+(y-14)+' m 400 '+(y-14)+' l S');
   if(name)T(100,y-11,name,0,11);
-  y-=36;
+  y-=34;
 
-  // Resumen en 6 casillas
-  const cells=[['Trabajadas',fmt(r.worked)],['Descuentos',fmt(r.disc)],['Netas',fmt(r.net)],
-    ['Objetivo'+(r.isManual?' (manual)':''),fmt(r.target)],['Diferencia',fmt(r.diff)],['Promedio diario',fmt(r.avg)]];
-  cells.forEach((c,i)=>{
-    const x=40+(i%3)*172,yy=y-Math.floor(i/3)*38;
-    fill(.96,.96,.98);box(x,yy-38,171,38,'f');
-    stroke(.8,.8,.85);ops.push('0.5 w');box(x,yy-38,171,38,'S');
-    fill(.4,.4,.45);T(x+8,yy-14,c[0],0,8);
-    fill(0,0,0);T(x+8,yy-31,c[1],1,13)
-  });
-  y-=76+24;
-
-  // Tabla genérica con encabezado de color, filas alternadas, bordes y fila de total
-  const H=19;
-  const row=(cols,vals,bg,bold)=>{
-    if(bg){fill(bg[0],bg[1],bg[2]);box(40,y-H,515,H,'f')}
-    fill(bold===2?1:0,bold===2?1:0,bold===2?1:0);
-    vals.forEach((s,j)=>T(cols[j]+6,y-H+6,s,bold,10));
-    fill(0,0,0);stroke(.78,.78,.84);ops.push('0.5 w');box(40,y-H,515,H,'S');
-    cols.slice(1).forEach(x=>ops.push(x+' '+(y-H)+' m '+x+' '+y+' l S'));
-    y-=H
+  // Encabezado de 2 filas (se repite si la tabla pasa a otra página)
+  const head=()=>{
+    fill(.31,.27,.9);box(40,y-2*H,515,2*H,'f');fill(1,1,1);
+    T(46,y-H+5,(MES[M]+' '+Y).toUpperCase(),1);T(214,y-H+5,'HORA DE:',1);
+    T(X[3]+6,y-H+5,'HORAS',1);T(X[4]+6,y-H+5,'1/2H ALMUERZO',1);
+    ['FECHA','LLEGADA','SALIDA','TRABAJADAS','- ANOTACIONES'].forEach((s,j)=>T(X[j]+6,y-2*H+5,s,1));
+    fill(0,0,0);
+    grid(y,H,X[2]);grid(y-H,H);
+    y-=2*H
   };
-  const table=(title,heads,xs,rows,foot)=>{
-    need(22+H*3);
-    T(40,y-12,title,1,12);y-=22;
-    const head=()=>row(xs,heads,[.31,.27,.9],2);
-    head();
-    rows.forEach((v,i)=>{if(y-H<50){newPage();head()}row(xs,v,i%2?[.95,.95,.98]:null,0)});
+  head();
+
+  // Fila de datos
+  const brow=(vals,bg)=>{
     if(y-H<50){newPage();head()}
-    row(xs,foot,[.88,.88,.98],1);y-=26
+    if(bg){fill(bg[0],bg[1],bg[2]);box(40,y-H,515,H,'f')}
+    fill(0,0,0);
+    vals.forEach((s,j)=>{if(s)T(X[j]+6,y-H+5,s,0,j===4?8:9)});
+    grid(y,H);y-=H
   };
-  const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'...':s;
 
-  if(ents.length)table('Registros',['Fecha','Día','Llegada','Salida','Descanso','Trabajado'],[40,130,200,285,370,455],
-    ents.map(e=>[e.date,DIAS[new Date(e.date+'T00:00:00').getDay()],e.start,e.end,e.brk+' min',fmt(e.min)]),
-    ['TOTAL','','','','',fmt(r.worked)]);
-  else{T(40,y-12,'Registros',1,12);T(40,y-30,'Sin registros este mes.',0,10);y-=52}
+  // Datos del mes agrupados por día
+  const byDay={},adjBy={};
+  S.entries.filter(e=>e.date.startsWith(ym+'-')).forEach(e=>(byDay[e.date]=byDay[e.date]||[]).push(e));
+  Object.values(byDay).forEach(a=>a.sort((p,q2)=>p.start.localeCompare(q2.start)));
+  S.adj.filter(a=>a.date.startsWith(ym+'-')).forEach(a=>(adjBy[a.date]=adjBy[a.date]||[]).push(a));
+  let rawTotal=0,brkTotal=0;
+  for(let d=1;d<=nd;d++){
+    const ds=iso(Y,M,d),t=S.dayTypes[ds]||'',E=byDay[ds]||[],A=adjBy[ds]||[];
+    const label=DIAS[new Date(Y,M,d).getDay()]+', '+d+' de '+MES[M].toLowerCase();
+    const extra=[];
+    if(t==='festivo')extra.push('Festivo');
+    if(t==='vacaciones')extra.push('Vacaciones');
+    if(S.notes&&S.notes[ds])extra.push(S.notes[ds]);
+    A.forEach(a=>extra.push(TIPOS[a.type]+' -'+fh(a.min)+': '+a.reason));
+    const bg=t==='festivo'?[1,.88,.88]:t==='vacaciones'?[.86,.97,.89]:null;
+    if(!E.length)brow([label,'','','',trunc(extra.join(' | '),46)],bg);
+    else E.forEach((e,i)=>{
+      const raw=e.min+e.brk;rawTotal+=raw;brkTotal+=e.brk;
+      const ann=[];if(e.brk)ann.push('-'+e.brk);if(i===0)ann.push(...extra);
+      brow([i?'':label,e.start,e.end,fh(raw),trunc(ann.join(' | '),46)],bg)
+    })
+  }
 
-  if(adjs.length)table('Descuentos',['Fecha','Tipo','Tiempo','Motivo'],[40,120,235,315],
-    adjs.map(a=>[a.date,TIPOS[a.type],'-'+fmt(a.min),trunc(a.reason,44)]),
-    ['TOTAL','','-'+fmt(r.disc),'']);
-  else{need(50);T(40,y-12,'Descuentos',1,12);T(40,y-30,'Sin descuentos este mes.',0,10);y-=52}
+  // Totales (mismo orden que tu Excel: horas, almuerzo, total, objetivo, extras)
+  if(y-14-H*7<50)newPage();else y-=14;
+  const trow=(lab,val,st)=>{
+    if(st){fill(.88,.88,.98);box(40,y-H,515,H,'f')}
+    fill(0,0,0);T(46,y-H+5,lab,st);T(X[4]+6,y-H+5,val,st);
+    stroke(.78,.78,.84);ops.push('0.5 w');box(40,y-H,515,H,'S');ops.push(X[4]+' '+(y-H)+' m '+X[4]+' '+y+' l S');y-=H
+  };
+  trow('TOTAL HORAS (suma de la columna horas trabajadas)',fh(rawTotal));
+  trow('TOTAL 1/2H ALMUERZO / DESCANSOS',(brkTotal?'-':'')+fh(brkTotal));
+  trow('DESCUENTOS Y AJUSTES',(r.disc?'-':'')+fh(r.disc));
+  trow('TOTAL HORAS TRABAJADAS (neto)',fh(r.net),1);
+  trow('OBJETIVO DEL MES'+(r.isManual?' (manual)':' (calculado)'),fh(r.target));
+  trow(r.diff>=0?'EXTRAS':'FALTAN',fh(Math.abs(r.diff)),1);
+  trow('PROMEDIO DIARIO (dias con registro)',fh(r.avg));
 
   pages.push(ops.join('\n'));
   const n=pages.length,kids=[],objs=[];
