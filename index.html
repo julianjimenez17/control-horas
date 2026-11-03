@@ -131,7 +131,7 @@ function render(){
     h+='<h3>Descuentos del mes</h3><ul>'+(A.map(a=>'<li>'+a.date+' · '+TIPOS[a.type]+' · <b>-'+fmt(a.min)+'</b> · '+esc(a.reason)+' <button class="mini" onclick="delAdj('+a.id+')">🗑</button></li>').join('')||'<li class="mu">Sin descuentos</li>')+'</ul>';
   }
   if(tab==='informes'){
-    h+='<div class="row noprint"><button onclick="csv()">Exportar Excel (CSV)</button><button onclick="window.print()">Guardar PDF / Imprimir</button></div>';
+    h+='<div class="row noprint"><button onclick="csv()">Exportar Excel (CSV)</button><button onclick="pdf()">Exportar PDF</button></div>';
     h+='<h3>Resumen de '+MES[M]+' '+Y+'</h3><ul><li>Trabajadas: '+fmt(r.worked)+'</li><li>Descuentos: '+fmt(r.disc)+'</li><li>Netas: '+fmt(r.net)+' de '+fmt(r.target)+' (dif. '+fmt(r.diff)+')</li><li>Promedio diario: '+fmt(r.avg)+'</li></ul>';
     const hist={};S.entries.forEach(e=>{const k=e.date.slice(0,7);hist[k]=hist[k]||{w:0,d:0};hist[k].w+=e.min});
     S.adj.forEach(a=>{const k=a.date.slice(0,7);hist[k]=hist[k]||{w:0,d:0};hist[k].d+=a.min});
@@ -139,7 +139,7 @@ function render(){
   }
   if(tab==='ajustes'){
     const s=S.settings;
-    h+='<div class="modal" style="width:100%;box-sizing:border-box"><label>Límite máximo por día'+dur('lim',s.limit)+'</label><label>Objetivo diario'+dur('tar',s.target)+'</label><div>Días laborables:<br>'+['L','M','X','J','V','S','D'].map((l,i)=>'<label style="display:inline-flex;flex-direction:row;gap:4px;margin-right:10px"><input type="checkbox" class="wd" value="'+(i+1)+'"'+(s.workdays.includes(i+1)?' checked':'')+'> '+l+'</label>').join('')+'</div><button onclick="saveSet()">Guardar ajustes</button><p class="mu" id="smsg">'+esc(err)+'</p></div>';
+    h+='<div class="modal" style="width:100%;box-sizing:border-box"><label>Tu nombre (sale en el PDF)<input id="nm" value="'+esc(s.name||'')+'" placeholder="Ej: Julián Jiménez"></label><label>Límite máximo por día'+dur('lim',s.limit)+'</label><label>Objetivo diario'+dur('tar',s.target)+'</label><div>Días laborables:<br>'+['L','M','X','J','V','S','D'].map((l,i)=>'<label style="display:inline-flex;flex-direction:row;gap:4px;margin-right:10px"><input type="checkbox" class="wd" value="'+(i+1)+'"'+(s.workdays.includes(i+1)?' checked':'')+'> '+l+'</label>').join('')+'</div><button onclick="saveSet()">Guardar ajustes</button><p class="mu" id="smsg">'+esc(err)+'</p></div>';
   }
   document.getElementById('app').innerHTML=h;
 }
@@ -149,7 +149,7 @@ function saveSet(){
   const lim=readDur('lim'),tar=readDur('tar'),wd=[...document.querySelectorAll('.wd:checked')].map(x=>+x.value);
   if(lim<1||lim>1440){err='El límite debe estar entre 1 min y 24 h';return render()}
   if(tar>lim){err='El objetivo no puede superar el límite';return render()}
-  Object.assign(S.settings,{limit:lim,target:tar,workdays:wd});save();err='Guardado ✔';render()
+  Object.assign(S.settings,{limit:lim,target:tar,workdays:wd,name:document.getElementById('nm').value.trim().slice(0,60)});save();err='Guardado ✔';render()
 }
 function openDay(d){sel=d;editing=null;err='';modal()}
 function closeDay(){sel=null;document.getElementById('modal').innerHTML='';render()}
@@ -188,6 +188,93 @@ function addAdj(){
   S.adj.push({id:uid(),date:sel,min:m,type:document.getElementById('at').value,reason:r});save();err='';modal()
 }
 function delAdj(id,inModal){S.adj=S.adj.filter(a=>a.id!==id);save();inModal?modal():render()}
+// PDF real, hecho a mano (sin librerías): funciona en iPhone, iPad y Mac, incluso sin internet
+function pdf(){
+  const ym=Y+'-'+pad(M+1),r=calc(Y,M),name=(S.settings.name||'').trim();
+  const ents=S.entries.filter(e=>e.date.startsWith(ym+'-')).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+  const adjs=S.adj.filter(a=>a.date.startsWith(ym+'-')).sort((a,b)=>a.date.localeCompare(b.date));
+  const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
+  const pages=[];let ops=[],y=800;
+  const q=s=>String(s).replace(/[^\x20-\xff]/g,c=>({'–':'-','—':'-','·':'|'}[c]||'?')).replace(/[\\()]/g,'\\$&');
+  const fill=(a,b,c)=>ops.push(a+' '+b+' '+c+' rg'),stroke=(a,b,c)=>ops.push(a+' '+b+' '+c+' RG');
+  const T=(x,yy,s,b,sz)=>ops.push('BT /'+(b?'F2':'F1')+' '+(sz||10)+' Tf '+x+' '+yy+' Td ('+q(s)+') Tj ET');
+  const box=(x,yy,w,h,m)=>ops.push(x+' '+yy+' '+w+' '+h+' re '+m);
+  const newPage=()=>{pages.push(ops.join('\n'));ops=[];y=800};
+  const need=h=>{if(y-h<50)newPage()};
+
+  // Encabezado + nombre
+  T(40,y-16,'Informe de horas - '+MES[M]+' '+Y,1,16);y-=36;
+  T(40,y-12,'Nombre:',1,11);
+  stroke(.4,.4,.45);ops.push('0.8 w 95 '+(y-14)+' m 400 '+(y-14)+' l S');
+  if(name)T(100,y-11,name,0,11);
+  y-=36;
+
+  // Resumen en 6 casillas
+  const cells=[['Trabajadas',fmt(r.worked)],['Descuentos',fmt(r.disc)],['Netas',fmt(r.net)],
+    ['Objetivo'+(r.isManual?' (manual)':''),fmt(r.target)],['Diferencia',fmt(r.diff)],['Promedio diario',fmt(r.avg)]];
+  cells.forEach((c,i)=>{
+    const x=40+(i%3)*172,yy=y-Math.floor(i/3)*38;
+    fill(.96,.96,.98);box(x,yy-38,171,38,'f');
+    stroke(.8,.8,.85);ops.push('0.5 w');box(x,yy-38,171,38,'S');
+    fill(.4,.4,.45);T(x+8,yy-14,c[0],0,8);
+    fill(0,0,0);T(x+8,yy-31,c[1],1,13)
+  });
+  y-=76+24;
+
+  // Tabla genérica con encabezado de color, filas alternadas, bordes y fila de total
+  const H=19;
+  const row=(cols,vals,bg,bold)=>{
+    if(bg){fill(bg[0],bg[1],bg[2]);box(40,y-H,515,H,'f')}
+    fill(bold===2?1:0,bold===2?1:0,bold===2?1:0);
+    vals.forEach((s,j)=>T(cols[j]+6,y-H+6,s,bold,10));
+    fill(0,0,0);stroke(.78,.78,.84);ops.push('0.5 w');box(40,y-H,515,H,'S');
+    cols.slice(1).forEach(x=>ops.push(x+' '+(y-H)+' m '+x+' '+y+' l S'));
+    y-=H
+  };
+  const table=(title,heads,xs,rows,foot)=>{
+    need(22+H*3);
+    T(40,y-12,title,1,12);y-=22;
+    const head=()=>row(xs,heads,[.31,.27,.9],2);
+    head();
+    rows.forEach((v,i)=>{if(y-H<50){newPage();head()}row(xs,v,i%2?[.95,.95,.98]:null,0)});
+    if(y-H<50){newPage();head()}
+    row(xs,foot,[.88,.88,.98],1);y-=26
+  };
+  const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'...':s;
+
+  if(ents.length)table('Registros',['Fecha','Día','Llegada','Salida','Descanso','Trabajado'],[40,130,200,285,370,455],
+    ents.map(e=>[e.date,DIAS[new Date(e.date+'T00:00:00').getDay()],e.start,e.end,e.brk+' min',fmt(e.min)]),
+    ['TOTAL','','','','',fmt(r.worked)]);
+  else{T(40,y-12,'Registros',1,12);T(40,y-30,'Sin registros este mes.',0,10);y-=52}
+
+  if(adjs.length)table('Descuentos',['Fecha','Tipo','Tiempo','Motivo'],[40,120,235,315],
+    adjs.map(a=>[a.date,TIPOS[a.type],'-'+fmt(a.min),trunc(a.reason,44)]),
+    ['TOTAL','','-'+fmt(r.disc),'']);
+  else{need(50);T(40,y-12,'Descuentos',1,12);T(40,y-30,'Sin descuentos este mes.',0,10);y-=52}
+
+  pages.push(ops.join('\n'));
+  const n=pages.length,kids=[],objs=[];
+  for(let i=0;i<n;i++)kids.push((5+i*2)+' 0 R');
+  objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
+  objs[2]='<< /Type /Pages /Kids ['+kids.join(' ')+'] /Count '+n+' >>';
+  objs[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objs[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  pages.forEach((c,i)=>{
+    objs[5+i*2]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents '+(6+i*2)+' 0 R >>';
+    objs[6+i*2]='<< /Length '+c.length+' >>\nstream\n'+c+'\nendstream'
+  });
+  let out='%PDF-1.4\n';const off=[];
+  for(let i=1;i<objs.length;i++){off[i]=out.length;out+=i+' 0 obj\n'+objs[i]+'\nendobj\n'}
+  const xr=out.length;
+  out+='xref\n0 '+objs.length+'\n0000000000 65535 f \n'+off.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+objs.length+' /Root 1 0 R >>\nstartxref\n'+xr+'\n%%EOF';
+  const bytes=new Uint8Array(out.length);for(let i=0;i<out.length;i++)bytes[i]=out.charCodeAt(i)&255;
+  const file=new File([bytes],'horas-'+ym+'.pdf',{type:'application/pdf'});
+  // En iPhone/iPad abre la hoja de compartir (Guardar en Archivos, Imprimir, Mail...)
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:'Informe de horas '+ym}).catch(()=>{});return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=file.name;
+  document.body.appendChild(a);a.click();a.remove()
+}
 function csv(){
   const rows=[['Fecha','Llegada','Salida','Descanso (min)','Minutos trabajados']];
   S.entries.sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>rows.push([e.date,e.start,e.end,e.brk,e.min]));
