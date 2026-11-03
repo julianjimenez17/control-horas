@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Control de horas</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Horas">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#4f46e5">
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1c1f2a;--mu:#6b7280;--ac:#4f46e5;--fe:#fecaca;--va:#bbf7d0;--bd:#d1d5db;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#12141c;--card:#1c2030;--tx:#e8eaf2;--mu:#9aa1b5;--ac:#818cf8;--fe:#7f1d1d;--va:#14532d;--bd:#3b4157}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#12141c;--card:#1c2030;--tx:#e8eaf2;--mu:#9aa1b5;--ac:#818cf8;--fe:#7f1d1d;--va:#14532d;--bd:#3b4157}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
+button,input,select{font-family:inherit;-webkit-appearance:none;appearance:none;touch-action:manipulation}
+button{min-height:40px}
+select{padding-right:24px;background-image:linear-gradient(45deg,transparent 50%,var(--mu) 50%),linear-gradient(135deg,var(--mu) 50%,transparent 50%);background-position:calc(100% - 14px) 55%,calc(100% - 9px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+input[type=checkbox]{-webkit-appearance:auto;appearance:auto;width:18px;height:18px}
+input[type=time],input[type=number]{min-height:38px}
+.app{max-width:820px;margin:auto;padding:14px}
+header,nav,.row{display:flex;align-items:center;gap:8px}
+header,nav{justify-content:space-between}
+h1{font-size:1.2rem;margin:6px 0}h2{font-size:1.1rem;margin:0}h3{margin:18px 0 6px}
+button{cursor:pointer;padding:8px 12px;border-radius:8px;border:0;background:var(--ac);color:#fff;font-size:.9rem}
+button.alt,.tabs button{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+.tabs{display:flex;gap:6px;margin:8px 0}.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.card{background:var(--card);padding:12px;border-radius:12px;display:flex;flex-direction:column}
+.card small,.mu{color:var(--mu)}.card b{font-size:1.25rem}
+.neg{color:#ef4444}.pos{color:#22c55e}
+.bar{height:12px;background:var(--card);border:1px solid var(--bd);border-radius:99px;overflow:hidden;margin-top:12px}
+.bar div{height:100%;background:var(--ac)}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.dow{text-align:center;color:var(--mu);font-size:.8rem}
+.day{background:var(--card);color:var(--tx);border:1px solid var(--bd);min-height:58px;display:flex;flex-direction:column;align-items:center;padding:4px}
+.day small{color:var(--ac);font-size:.68rem}.day.off{opacity:.55}
+.day.festivo{background:var(--fe)}.day.vacaciones{background:var(--va)}
+.chart{display:flex;align-items:flex-end;gap:2px;height:120px;border-bottom:1px solid var(--bd)}
+.chart i{flex:1;background:var(--ac);border-radius:3px 3px 0 0;min-height:1px}
+.bg{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:5}
+.modal{background:var(--card);padding:16px;border-radius:14px;width:min(94vw,400px);max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:8px}
+label{display:flex;flex-direction:column;gap:3px;font-size:.9rem}
+input,select{padding:7px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font-size:1rem}
+.dur{display:flex;align-items:center;gap:6px}.dur input{width:64px}
+.err{background:#fee2e2;color:#991b1b;padding:8px;border-radius:8px}
+.mini{padding:2px 7px;background:transparent;color:var(--tx);border:1px solid var(--bd)}
+ul{padding-left:18px;margin:4px 0}li{margin:4px 0}
+@media print{.tabs,nav,header button,.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div id="modal"></div>
+<script>
+// Icono para la pantalla de inicio de iPhone/iPad (se dibuja en un canvas, no necesita archivos aparte)
+try{
+  const c=document.createElement('canvas');c.width=c.height=180;const x=c.getContext('2d');
+  x.fillStyle='#4f46e5';x.fillRect(0,0,180,180);
+  x.strokeStyle='#fff';x.lineWidth=12;x.lineCap='round';
+  x.beginPath();x.arc(90,90,54,0,Math.PI*2);x.stroke();
+  x.beginPath();x.moveTo(90,56);x.lineTo(90,90);x.lineTo(114,104);x.stroke();
+  const l=document.createElement('link');l.rel='apple-touch-icon';l.href=c.toDataURL('image/png');
+  document.head.appendChild(l);
+}catch(e){}
+const KEY='control-horas-v1';
+const D={entries:[],dayTypes:{},adj:[],monthTargets:{},settings:{limit:1440,target:480,workdays:[1,2,3,4,5],theme:''}};
+let S=JSON.parse(JSON.stringify(D));
+try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const TIPOS={dia_libre:'Día libre',vacaciones:'Vacaciones',ausencia:'Ausencia',permiso_medico:'Permiso médico',manual:'Ajuste manual'};
+const pad=n=>String(n).padStart(2,'0');
+const fmt=m=>(m<0?'-':'')+Math.floor(Math.abs(m)/60)+'h '+pad(Math.abs(m)%60)+'m';
+const iso=(y,m,d)=>y+'-'+pad(m+1)+'-'+pad(d);
+const wdOf=d=>((d.getDay()+6)%7)+1;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const toMin=t=>{const[a,b]=t.split(':').map(Number);return a*60+b};
+const uid=()=>Date.now()+Math.floor(Math.random()*1000);
+const now=new Date();let Y=now.getFullYear(),M=now.getMonth(),tab='panel',sel=null,editing=null,err='';
+if(S.settings.theme)document.documentElement.dataset.theme=S.settings.theme;
+
+function weekKey(ds){const d=new Date(ds+'T00:00:00');d.setDate(d.getDate()-(wdOf(d)-1));return iso(d.getFullYear(),d.getMonth(),d.getDate())}
+function calc(y,m){
+  const p=y+'-'+pad(m+1)+'-',perDay={},perWeek={};
+  S.entries.filter(e=>e.date.startsWith(p)).forEach(e=>perDay[e.date]=(perDay[e.date]||0)+e.min);
+  Object.entries(perDay).forEach(([d,v])=>{const k=weekKey(d);perWeek[k]=(perWeek[k]||0)+v});
+  const worked=Object.values(perDay).reduce((a,b)=>a+b,0);
+  const disc=S.adj.filter(a=>a.date.startsWith(p)).reduce((a,b)=>a+b.min,0);
+  const net=worked-disc;let days=0;
+  for(let d=1;d<=new Date(y,m+1,0).getDate();d++){
+    const t=S.dayTypes[iso(y,m,d)]||'laborable';
+    if(S.settings.workdays.includes(wdOf(new Date(y,m,d)))&&t==='laborable')days++}
+  // Objetivo del mes: si lo escribiste tú, manda ese; si no, se calcula (días laborables × objetivo diario)
+  const manual=S.monthTargets[y+'-'+pad(m+1)],isManual=manual!==undefined;
+  const target=isManual?manual:days*S.settings.target,n=Object.keys(perDay).length;
+  return{perDay,perWeek,worked,disc,net,target,isManual,diff:net-target,avg:n?Math.round(worked/n):0,progress:target?Math.min(100,Math.round(net/target*100)):0}
+}
+function dur(id,v,mh){return '<span class="dur"><input id="'+id+'h" type="number" min="0" max="'+(mh||24)+'" value="'+Math.floor(v/60)+'"> h <input id="'+id+'m" type="number" min="0" max="59" value="'+v%60+'"> min</span>'}
+let merr='';
+function saveMonth(){
+  const v=readDur('mt');
+  if(v<1){merr='Escribe un objetivo mayor a 0, o usa "Cálculo automático"';return render()}
+  S.monthTargets[Y+'-'+pad(M+1)]=v;save();merr='';render()
+}
+function clearMonth(){delete S.monthTargets[Y+'-'+pad(M+1)];save();merr='';render()}
+const readDur=id=>(+document.getElementById(id+'h').value||0)*60+(+document.getElementById(id+'m').value||0);
+
+function render(){
+  const r=calc(Y,M),p=Y+'-'+pad(M+1)+'-';
+  let h='<header><h1>⏱ Control de horas</h1><button class="alt" onclick="theme()">🌙/☀️</button></header>';
+  h+='<div class="tabs">'+[['panel','Panel'],['informes','Informes'],['ajustes','Ajustes']].map(([k,l])=>'<button class="'+(tab===k?'on':'')+'" onclick="tab=\''+k+'\';render()">'+l+'</button>').join('')+'</div>';
+  h+='<nav><button class="alt" onclick="go(-1)">◄</button><h2>'+MES[M]+' '+Y+'</h2><button class="alt" onclick="go(1)">►</button></nav>';
+  if(tab==='panel'){
+    h+='<div class="cards"><div class="card"><small>Trabajadas (netas)</small><b>'+fmt(r.net)+'</b></div><div class="card"><small>Objetivo del mes</small><b>'+fmt(r.target)+'</b></div><div class="card"><small>Diferencia</small><b class="'+(r.diff<0?'neg':'pos')+'">'+fmt(r.diff)+'</b></div><div class="card"><small>Promedio diario</small><b>'+fmt(r.avg)+'</b></div></div>';
+    h+='<div class="bar"><div style="width:'+r.progress+'%"></div></div><p class="mu">Progreso: '+r.progress+'% · Brutas: '+fmt(r.worked)+' · Descuentos: '+fmt(r.disc)+'</p>';
+    h+='<div class="card" style="gap:8px;margin-top:8px"><b style="font-size:1rem">Objetivo de '+MES[M]+'</b><span class="mu">'+(r.isManual?'Lo escribiste tú.':'Ahora es un cálculo automático (días laborables × objetivo diario). Escríbelo tú si tus turnos varían.')+'</span>'+(merr?'<div class="err">'+esc(merr)+'</div>':'')+dur('mt',r.target,744)+'<div class="row"><button onclick="saveMonth()">Guardar objetivo</button>'+(r.isManual?'<button class="alt" onclick="clearMonth()">Cálculo automático</button>':'')+'</div></div>';
+    const nd=new Date(Y,M+1,0).getDate(),mx=Math.max(S.settings.target,...Object.values(r.perDay),1);
+    h+='<h3>Horas por día</h3><div class="chart">'+Array.from({length:nd},(_,i)=>{const v=r.perDay[iso(Y,M,i+1)]||0;return '<i title="Día '+(i+1)+': '+fmt(v)+'" style="height:'+(v/mx*100)+'%"></i>'}).join('')+'</div>';
+    h+='<h3>Calendario</h3><div class="grid">'+['L','M','X','J','V','S','D'].map(d=>'<div class="dow">'+d+'</div>').join('');
+    h+='<div></div>'.repeat((new Date(Y,M,1).getDay()+6)%7);
+    for(let d=1;d<=nd;d++){const ds=iso(Y,M,d),t=S.dayTypes[ds]||'',off=!S.settings.workdays.includes(wdOf(new Date(Y,M,d)));
+      h+='<button class="day '+t+(off?' off':'')+'" onclick="openDay(\''+ds+'\')"><span>'+d+'</span>'+(r.perDay[ds]?'<small>'+fmt(r.perDay[ds])+'</small>':'')+'</button>'}
+    h+='</div><p class="mu">Rojo = festivo · Verde = vacaciones · Toca un día para registrar o editar.</p>';
+    h+='<h3>Horas por semana</h3><ul>'+(Object.entries(r.perWeek).map(([k,v])=>'<li>Semana del '+k+': '+fmt(v)+'</li>').join('')||'<li class="mu">Sin registros</li>')+'</ul>';
+    const A=S.adj.filter(a=>a.date.startsWith(p));
+    h+='<h3>Descuentos del mes</h3><ul>'+(A.map(a=>'<li>'+a.date+' · '+TIPOS[a.type]+' · <b>-'+fmt(a.min)+'</b> · '+esc(a.reason)+' <button class="mini" onclick="delAdj('+a.id+')">🗑</button></li>').join('')||'<li class="mu">Sin descuentos</li>')+'</ul>';
+  }
+  if(tab==='informes'){
+    h+='<div class="row noprint"><button onclick="csv()">Exportar Excel (CSV)</button><button onclick="window.print()">Guardar PDF / Imprimir</button></div>';
+    h+='<h3>Resumen de '+MES[M]+' '+Y+'</h3><ul><li>Trabajadas: '+fmt(r.worked)+'</li><li>Descuentos: '+fmt(r.disc)+'</li><li>Netas: '+fmt(r.net)+' de '+fmt(r.target)+' (dif. '+fmt(r.diff)+')</li><li>Promedio diario: '+fmt(r.avg)+'</li></ul>';
+    const hist={};S.entries.forEach(e=>{const k=e.date.slice(0,7);hist[k]=hist[k]||{w:0,d:0};hist[k].w+=e.min});
+    S.adj.forEach(a=>{const k=a.date.slice(0,7);hist[k]=hist[k]||{w:0,d:0};hist[k].d+=a.min});
+    h+='<h3>Historial</h3><ul>'+(Object.keys(hist).sort().reverse().map(k=>'<li>'+k+' · netas '+fmt(hist[k].w-hist[k].d)+' (brutas '+fmt(hist[k].w)+', desc. '+fmt(hist[k].d)+')</li>').join('')||'<li class="mu">Aún no hay meses</li>')+'</ul>';
+  }
+  if(tab==='ajustes'){
+    const s=S.settings;
+    h+='<div class="modal" style="width:100%;box-sizing:border-box"><label>Límite máximo por día'+dur('lim',s.limit)+'</label><label>Objetivo diario'+dur('tar',s.target)+'</label><div>Días laborables:<br>'+['L','M','X','J','V','S','D'].map((l,i)=>'<label style="display:inline-flex;flex-direction:row;gap:4px;margin-right:10px"><input type="checkbox" class="wd" value="'+(i+1)+'"'+(s.workdays.includes(i+1)?' checked':'')+'> '+l+'</label>').join('')+'</div><button onclick="saveSet()">Guardar ajustes</button><p class="mu" id="smsg">'+esc(err)+'</p></div>';
+  }
+  document.getElementById('app').innerHTML=h;
+}
+function go(n){const d=new Date(Y,M+n,1);Y=d.getFullYear();M=d.getMonth();merr='';render()}
+function theme(){const dark=getComputedStyle(document.body).backgroundColor==='rgb(18, 20, 28)';S.settings.theme=dark?'light':'dark';document.documentElement.dataset.theme=S.settings.theme;save()}
+function saveSet(){
+  const lim=readDur('lim'),tar=readDur('tar'),wd=[...document.querySelectorAll('.wd:checked')].map(x=>+x.value);
+  if(lim<1||lim>1440){err='El límite debe estar entre 1 min y 24 h';return render()}
+  if(tar>lim){err='El objetivo no puede superar el límite';return render()}
+  Object.assign(S.settings,{limit:lim,target:tar,workdays:wd});save();err='Guardado ✔';render()
+}
+function openDay(d){sel=d;editing=null;err='';modal()}
+function closeDay(){sel=null;document.getElementById('modal').innerHTML='';render()}
+function modal(prefill){
+  const E=S.entries.filter(e=>e.date===sel),t=S.dayTypes[sel]||'laborable',f=prefill||{start:'08:00',end:'16:00',brk:30},A=S.adj.filter(a=>a.date===sel);
+  document.getElementById('modal').innerHTML='<div class="bg" onclick="if(event.target===this)closeDay()"><div class="modal"><h3 style="margin:0">'+sel+'</h3>'+(err?'<div class="err">'+esc(err)+'</div>':'')
+  +'<label>Tipo de día<select onchange="setType(this.value)">'+[['laborable','Laborable'],['festivo','Festivo'],['vacaciones','Vacaciones']].map(([k,l])=>'<option value="'+k+'"'+(t===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+  +'<b>Turnos del día</b><ul>'+(E.map(e=>'<li>'+e.start+'–'+e.end+' (desc. '+e.brk+' min) = <b>'+fmt(e.min)+'</b> <button class="mini" onclick="editE('+e.id+')">✏️</button><button class="mini" onclick="delE('+e.id+')">🗑</button></li>').join('')||'<li class="mu">Sin turnos</li>')+'</ul>'
+  +'<b>'+(editing?'Editando turno':'Añadir turno')+'</b><label>Llegada<input type="time" id="s" value="'+f.start+'"></label><label>Salida<input type="time" id="e" value="'+f.end+'"></label><label>Descanso (min)<input type="number" id="b" min="0" value="'+f.brk+'"></label>'
+  +'<button onclick="saveE()">'+(editing?'Guardar cambios':'Añadir turno')+'</button>'
+  +'<b>Descuento (opcional)</b><select id="at">'+Object.entries(TIPOS).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select>'+dur('ad',0)+'<input id="ar" placeholder="Motivo (obligatorio)"><button onclick="addAdj()">Añadir descuento</button>'
+  +(A.length?'<ul>'+A.map(a=>'<li>'+TIPOS[a.type]+' -'+fmt(a.min)+' · '+esc(a.reason)+' <button class="mini" onclick="delAdj('+a.id+',1)">🗑</button></li>').join('')+'</ul>':'')
+  +'<button class="alt" onclick="closeDay()">Cerrar</button></div></div>'
+}
+function setType(v){if(v==='laborable')delete S.dayTypes[sel];else S.dayTypes[sel]=v;save()}
+function saveE(){
+  const s=document.getElementById('s').value,e=document.getElementById('e').value,b=Number(document.getElementById('b').value);
+  if(!s||!e)return fail('Pon la hora de llegada y de salida');
+  if(s===e)return fail('Llegada y salida no pueden ser iguales');
+  if(!Number.isInteger(b)||b<0)return fail('El descanso debe ser un número entero de minutos');
+  let span=toMin(e)-toMin(s);if(span<0)span+=1440;
+  const w=span-b;if(w<=0)return fail('El descanso es mayor o igual que la jornada');
+  const others=S.entries.filter(x=>x.date===sel&&x.id!==editing).reduce((a,x)=>a+x.min,0);
+  if(others+w>S.settings.limit)return fail('Superas el límite diario de '+fmt(S.settings.limit));
+  if(editing){Object.assign(S.entries.find(x=>x.id===editing),{start:s,end:e,brk:b,min:w})}
+  else S.entries.push({id:uid(),date:sel,start:s,end:e,brk:b,min:w});
+  save();editing=null;err='';modal()
+}
+function fail(m){err=m;modal()}
+function editE(id){editing=id;const e=S.entries.find(x=>x.id===id);err='';modal({start:e.start,end:e.end,brk:e.brk})}
+function delE(id){S.entries=S.entries.filter(x=>x.id!==id);save();modal()}
+function addAdj(){
+  const m=readDur('ad'),r=document.getElementById('ar').value.trim();
+  if(m<1)return fail('El descuento debe ser de al menos 1 minuto');
+  if(!r)return fail('El motivo es obligatorio');
+  S.adj.push({id:uid(),date:sel,min:m,type:document.getElementById('at').value,reason:r});save();err='';modal()
+}
+function delAdj(id,inModal){S.adj=S.adj.filter(a=>a.id!==id);save();inModal?modal():render()}
+function csv(){
+  const rows=[['Fecha','Llegada','Salida','Descanso (min)','Minutos trabajados']];
+  S.entries.sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>rows.push([e.date,e.start,e.end,e.brk,e.min]));
+  rows.push([],['Descuentos'],['Fecha','Tipo','Minutos','Motivo']);
+  S.adj.forEach(a=>rows.push([a.date,TIPOS[a.type],a.min,'"'+a.reason.replace(/"/g,'""')+'"']));
+  const blob=new Blob(['\ufeff'+rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'});
+  const file=new File([blob],'horas.csv',{type:'text/csv'});
+  // En iPhone/iPad se abre la hoja de compartir (Guardar en Archivos, Numbers, Mail...)
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:'Control de horas'}).catch(()=>{});return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='horas.csv';
+  document.body.appendChild(a);a.click();a.remove()
+}
+render();
+</script>
+</body>
+</html>
