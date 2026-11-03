@@ -116,7 +116,7 @@ function render(){
   h+='<div class="tabs">'+[['panel','Panel'],['informes','Informes'],['ajustes','Ajustes']].map(([k,l])=>'<button class="'+(tab===k?'on':'')+'" onclick="tab=\''+k+'\';render()">'+l+'</button>').join('')+'</div>';
   h+='<nav><button class="alt" onclick="go(-1)">◄</button><h2>'+MES[M]+' '+Y+'</h2><button class="alt" onclick="go(1)">►</button></nav>';
   if(tab==='panel'){
-    h+='<div class="cards"><div class="card"><small>Trabajadas (netas)</small><b>'+fmt(r.net)+'</b></div><div class="card"><small>Objetivo del mes</small><b>'+fmt(r.target)+'</b></div><div class="card"><small>Diferencia</small><b class="'+(r.diff<0?'neg':'pos')+'">'+fmt(r.diff)+'</b></div><div class="card"><small>Promedio diario</small><b>'+fmt(r.avg)+'</b></div></div>';
+    h+=nag();h+='<div class="cards"><div class="card"><small>Trabajadas (netas)</small><b>'+fmt(r.net)+'</b></div><div class="card"><small>Objetivo del mes</small><b>'+fmt(r.target)+'</b></div><div class="card"><small>Diferencia</small><b class="'+(r.diff<0?'neg':'pos')+'">'+fmt(r.diff)+'</b></div><div class="card"><small>Promedio diario</small><b>'+fmt(r.avg)+'</b></div></div>';
     h+='<div class="bar"><div style="width:'+r.progress+'%"></div></div><p class="mu">Progreso: '+r.progress+'% · Brutas: '+fmt(r.worked)+' · Descuentos: '+fmt(r.disc)+'</p>';
     h+='<div class="card" style="gap:8px;margin-top:8px"><b style="font-size:1rem">Objetivo de '+MES[M]+'</b><span class="mu">'+(r.isManual?'Lo escribiste tú.':'Ahora es un cálculo automático (días laborables × objetivo diario). Escríbelo tú si tus turnos varían.')+'</span>'+(merr?'<div class="err">'+esc(merr)+'</div>':'')+dur('mt',r.target,744)+'<div class="row"><button onclick="saveMonth()">Guardar objetivo</button>'+(r.isManual?'<button class="alt" onclick="clearMonth()">Cálculo automático</button>':'')+'</div></div>';
     const nd=new Date(Y,M+1,0).getDate(),mx=Math.max(S.settings.target,...Object.values(r.perDay),1);
@@ -140,6 +140,7 @@ function render(){
   if(tab==='ajustes'){
     const s=S.settings;
     h+='<div class="modal" style="width:100%;box-sizing:border-box"><label>Tu nombre (sale en el PDF)<input id="nm" value="'+esc(s.name||'')+'" placeholder="Ej: Julián Jiménez"></label><label>Límite máximo por día'+dur('lim',s.limit)+'</label><label>Objetivo diario'+dur('tar',s.target)+'</label><div>Días laborables:<br>'+['L','M','X','J','V','S','D'].map((l,i)=>'<label style="display:inline-flex;flex-direction:row;gap:4px;margin-right:10px"><input type="checkbox" class="wd" value="'+(i+1)+'"'+(s.workdays.includes(i+1)?' checked':'')+'> '+l+'</label>').join('')+'</div><button onclick="saveSet()">Guardar ajustes</button><p class="mu" id="smsg">'+esc(err)+'</p></div>';
+    h+='<div class="modal" style="width:100%;box-sizing:border-box;margin-top:12px"><b>Copia de seguridad</b><span class="mu">Guarda un archivo con todos tus datos (en Archivos o iCloud Drive). Úsalo si cambias de teléfono o si borras la app.</span><span class="mu">'+(S.settings.lastBackup?'Última copia: '+S.settings.lastBackup:'Aún no has guardado ninguna copia.')+'</span><button onclick="saveBackup()">Guardar copia</button><button class="alt" onclick="pickBackup()">Restaurar copia</button><input id="bkf" type="file" accept="application/json,.json" style="display:none" onchange="restoreBackup(this)"></div>';
   }
   document.getElementById('app').innerHTML=h;
 }
@@ -294,6 +295,58 @@ function pdf(){
     navigator.share({files:[file],title:'Informe de horas '+ym}).catch(()=>{});return}
   const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=file.name;
   document.body.appendChild(a);a.click();a.remove()
+}
+// ---------- Copia de seguridad ----------
+function nag(){
+  if(S.entries.length<3)return '';
+  const lb=S.settings.lastBackup;let msg='';
+  if(!lb)msg='Aún no has guardado ninguna copia de seguridad.';
+  else{const d=Math.floor((Date.now()-new Date(lb+'T00:00:00'))/864e5);if(d>=30)msg='Tu última copia fue hace '+d+' días.'}
+  return msg?'<div class="card" style="margin-bottom:10px;gap:6px"><span>💾 '+msg+'</span><button onclick="saveBackup()">Guardar copia ahora</button></div>':''
+}
+function saveBackup(){
+  const dd=new Date(),stamp=dd.getFullYear()+'-'+pad(dd.getMonth()+1)+'-'+pad(dd.getDate());
+  const copy=JSON.parse(JSON.stringify(S));copy.settings.lastBackup=stamp;
+  const txt=JSON.stringify({app:'control-horas',version:1,exportedAt:dd.toISOString(),data:copy},null,1);
+  const file=new File([txt],'control-horas-copia-'+stamp+'.json',{type:'application/json'});
+  const done=()=>{S.settings.lastBackup=stamp;save();render()};
+  // En iPhone/iPad abre la hoja de compartir: elige "Guardar en Archivos"
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:'Copia de seguridad - Control de horas'}).then(done).catch(()=>{});return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=file.name;
+  document.body.appendChild(a);a.click();a.remove();done()
+}
+function pickBackup(){document.getElementById('bkf').click()}
+function restoreBackup(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const j=JSON.parse(rd.result),d=j&&j.app==='control-horas'?j.data:null;
+      const DT=/^\d{4}-\d{2}-\d{2}$/,TM=/^\d{2}:\d{2}$/;
+      if(!d||!Array.isArray(d.entries)||!Array.isArray(d.adj))throw 0;
+      if(!d.entries.every(e=>e&&DT.test(e.date)&&TM.test(e.start)&&TM.test(e.end)&&Number.isInteger(e.brk)&&e.brk>=0&&Number.isInteger(e.min)&&e.min>0))throw 0;
+      if(!d.adj.every(a=>a&&DT.test(a.date)&&Number.isInteger(a.min)&&a.min>0&&TIPOS[a.type]&&typeof a.reason==='string'))throw 0;
+      if(!confirm('Esto reemplaza lo que tienes ahora ('+S.entries.length+' turnos) por la copia ('+d.entries.length+' turnos). ¿Continuar?'))return;
+      try{localStorage.setItem(KEY+'-anterior',JSON.stringify(S))}catch(e){}   // por si te arrepientes
+      const n=JSON.parse(JSON.stringify(D)),st=d.settings||{};
+      n.entries=d.entries.map(e=>({id:e.id||uid(),date:e.date,start:e.start,end:e.end,brk:e.brk,min:e.min}));
+      n.adj=d.adj.map(a=>({id:a.id||uid(),date:a.date,min:a.min,type:a.type,reason:a.reason.slice(0,200)}));
+      Object.entries(d.dayTypes||{}).forEach(([k,v])=>{if(DT.test(k)&&(v==='festivo'||v==='vacaciones'))n.dayTypes[k]=v});
+      Object.entries(d.monthTargets||{}).forEach(([k,v])=>{if(/^\d{4}-\d{2}$/.test(k)&&Number.isInteger(v)&&v>0)n.monthTargets[k]=v});
+      Object.entries(d.notes||{}).forEach(([k,v])=>{if(DT.test(k)&&typeof v==='string')n.notes[k]=v.slice(0,80)});
+      if(Number.isInteger(st.limit)&&st.limit>=1&&st.limit<=1440)n.settings.limit=st.limit;
+      if(Number.isInteger(st.target)&&st.target>=0&&st.target<=1440)n.settings.target=st.target;
+      if(Array.isArray(st.workdays))n.settings.workdays=st.workdays.filter(x=>Number.isInteger(x)&&x>=1&&x<=7);
+      if(st.theme==='dark'||st.theme==='light')n.settings.theme=st.theme;
+      if(typeof st.name==='string')n.settings.name=st.name.slice(0,60);
+      if(typeof st.lastBackup==='string')n.settings.lastBackup=st.lastBackup.slice(0,10);
+      S=n;save();
+      document.documentElement.dataset.theme=S.settings.theme||'';
+      err='Copia restaurada ✔ ('+S.entries.length+' turnos)';render()
+    }catch(e){err='Ese archivo no es una copia válida de esta app';render()}
+  };
+  rd.readAsText(f);inp.value=''
 }
 function csv(){
   const rows=[['Fecha','Llegada','Salida','Descanso (min)','Minutos trabajados']];
