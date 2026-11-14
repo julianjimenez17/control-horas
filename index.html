@@ -11,9 +11,9 @@
 <meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#4f46e5">
 <style>
-:root{--bg:#f6f7fb;--card:#fff;--tx:#1c1f2a;--mu:#6b7280;--ac:#4f46e5;--fe:#fecaca;--va:#bbf7d0;--bd:#d1d5db;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#12141c;--card:#1c2030;--tx:#e8eaf2;--mu:#9aa1b5;--ac:#818cf8;--fe:#7f1d1d;--va:#14532d;--bd:#3b4157}}
-:root[data-theme="dark"]{color-scheme:dark;--bg:#12141c;--card:#1c2030;--tx:#e8eaf2;--mu:#9aa1b5;--ac:#818cf8;--fe:#7f1d1d;--va:#14532d;--bd:#3b4157}
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1c1f2a;--mu:#6b7280;--ac:#4f46e5;--fe:#fecaca;--va:#bbf7d0;--li:#e9d5ff;--bd:#d1d5db;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#12141c;--card:#1c2030;--tx:#e8eaf2;--mu:#9aa1b5;--ac:#818cf8;--fe:#7f1d1d;--va:#14532d;--li:#581c87;--bd:#3b4157}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#12141c;--card:#1c2030;--tx:#e8eaf2;--mu:#9aa1b5;--ac:#818cf8;--fe:#7f1d1d;--va:#14532d;--li:#581c87;--bd:#3b4157}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
@@ -40,7 +40,7 @@ button.alt,.tabs button{background:var(--card);color:var(--tx);border:1px solid 
 .dow{text-align:center;color:var(--mu);font-size:.8rem}
 .day{background:var(--card);color:var(--tx);border:1px solid var(--bd);min-height:58px;display:flex;flex-direction:column;align-items:center;padding:4px}
 .day small{color:var(--ac);font-size:.68rem}.day.off{opacity:.55}
-.day.festivo{background:var(--fe)}.day.vacaciones{background:var(--va)}
+.day.festivo{background:var(--fe)}.day.vacaciones{background:var(--va)}.day.libre{background:var(--li)}
 .chart{display:flex;align-items:flex-end;gap:2px;height:120px;border-bottom:1px solid var(--bd)}
 .chart i{flex:1;background:var(--ac);border-radius:3px 3px 0 0;min-height:1px}
 .bg{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:5}
@@ -128,7 +128,7 @@ function render(){
     h+='<div></div>'.repeat((new Date(Y,M,1).getDay()+6)%7);
     for(let d=1;d<=nd;d++){const ds=iso(Y,M,d),t=S.dayTypes[ds]||'',off=!S.settings.workdays.includes(wdOf(new Date(Y,M,d)));
       h+='<button class="day '+t+(off?' off':'')+'" onclick="openDay(\''+ds+'\')"><span>'+d+'</span>'+(r.perDay[ds]?'<small>'+fmt(r.perDay[ds])+'</small>':'')+'</button>'}
-    h+='</div><p class="mu">Rojo = festivo · Verde = vacaciones · Toca un día para registrar o editar.</p>';
+    h+='</div><p class="mu">Rojo = festivo · Verde = vacaciones · Lila = día libre · Toca un día para registrar o editar.</p>';
     h+='<h3>Horas por semana</h3><ul>'+(Object.entries(r.perWeek).map(([k,v])=>'<li>Semana del '+k+': '+fmt(v)+'</li>').join('')||'<li class="mu">Sin registros</li>')+'</ul>';
     const A=S.adj.filter(a=>a.date.startsWith(p));
     h+='<h3>Descuentos del mes</h3><ul>'+(A.map(a=>'<li>'+a.date+' · '+TIPOS[a.type]+' · <b>-'+fmt(a.min)+'</b> · '+esc(a.reason)+' <button class="mini" onclick="delAdj('+a.id+')">🗑</button></li>').join('')||'<li class="mu">Sin descuentos</li>')+'</ul>';
@@ -160,7 +160,7 @@ function closeDay(){sel=null;document.getElementById('modal').innerHTML='';rende
 function modal(prefill){
   const E=S.entries.filter(e=>e.date===sel),t=S.dayTypes[sel]||'laborable',f=prefill||{start:'08:00',end:'16:00',brk:30},A=S.adj.filter(a=>a.date===sel);
   document.getElementById('modal').innerHTML='<div class="bg" onclick="if(event.target===this)closeDay()"><div class="modal"><h3 style="margin:0">'+sel+'</h3>'+(err?'<div class="err">'+esc(err)+'</div>':'')
-  +'<label>Tipo de día<select onchange="setType(this.value)">'+[['laborable','Laborable'],['festivo','Festivo'],['vacaciones','Vacaciones']].map(([k,l])=>'<option value="'+k+'"'+(t===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+  +'<label>Tipo de día<select onchange="setType(this.value)">'+[['laborable','Laborable'],['festivo','Festivo'],['vacaciones','Vacaciones'],['libre','Día libre']].map(([k,l])=>'<option value="'+k+'"'+(t===k?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'
   +'<label>Anotación del día (sale en el reporte)<input id="dn" value="'+esc((S.notes&&S.notes[sel])||'')+'" onchange="setNote(this.value)" placeholder="Ej: Cx refractiva"></label>'+'<b>Turnos del día</b><ul>'+(E.map(e=>'<li>'+e.start+'–'+e.end+' (desc. '+e.brk+' min) = <b>'+fmt(e.min)+'</b> <button class="mini" onclick="editE('+e.id+')">✏️</button><button class="mini" onclick="delE('+e.id+')">🗑</button></li>').join('')||'<li class="mu">Sin turnos</li>')+'</ul>'
   +'<b>'+(editing?'Editando turno':'Añadir turno')+'</b><label>Llegada<input type="time" id="s" value="'+f.start+'"></label><label>Salida<input type="time" id="e" value="'+f.end+'"></label><label>Descanso (min)<input type="number" id="b" min="0" value="'+f.brk+'"></label>'
   +'<button onclick="saveE()">'+(editing?'Guardar cambios':'Añadir turno')+'</button>'
@@ -335,7 +335,7 @@ function restoreBackup(inp){
       const n=JSON.parse(JSON.stringify(D)),st=d.settings||{};
       n.entries=d.entries.map(e=>({id:e.id||uid(),date:e.date,start:e.start,end:e.end,brk:e.brk,min:e.min}));
       n.adj=d.adj.map(a=>({id:a.id||uid(),date:a.date,min:a.min,type:a.type,reason:a.reason.slice(0,200)}));
-      Object.entries(d.dayTypes||{}).forEach(([k,v])=>{if(DT.test(k)&&(v==='festivo'||v==='vacaciones'))n.dayTypes[k]=v});
+      Object.entries(d.dayTypes||{}).forEach(([k,v])=>{if(DT.test(k)&&(v==='festivo'||v==='vacaciones'||v==='libre'))n.dayTypes[k]=v});
       Object.entries(d.monthTargets||{}).forEach(([k,v])=>{if(/^\d{4}-\d{2}$/.test(k)&&Number.isInteger(v)&&v>0)n.monthTargets[k]=v});
       Object.entries(d.notes||{}).forEach(([k,v])=>{if(DT.test(k)&&typeof v==='string')n.notes[k]=v.slice(0,80)});
       if(Number.isInteger(st.limit)&&st.limit>=1&&st.limit<=1440)n.settings.limit=st.limit;
